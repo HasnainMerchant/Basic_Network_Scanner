@@ -1,51 +1,40 @@
 import socket
 import ipaddress
-from queue import Queue
-import threading
-import copy
+from concurrent.futures import ThreadPoolExecutor
 
 
-open_ports = {}
-unreachable_ip = []
+ip_addresses = []
+ports = []
 
-def scan_network(ip_address, queue_port):
-    queue_list = copy.copy(queue_port)
-    thread_list = []
-    def scan_port(port):
-        try:
-            # Create a socket object
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            # Attempt to connect to the IP address and port
-            sock.connect_ex((ip, port))
-            sock.close()
-            return True
-        except:
-            return False
-    def worker(queue_list):
-        while not len(queue_list) == 0:
-            port = queue_list.pop(0)
-            if scan_port(port):
-                print(f'Port {port} is Open for IP {ip} !')
-                open_ports[ip] = port
-            else:
-                unreachable_ip.append(ip)
-    
-    for ip in ipaddress.IPv4Network(ip_address):
-        ip = str(ip)
-        print(f"Scanning IP: {ip}")
-        queue_list = copy.copy(queue_port)
-        try:
-            for t in range(100):
-                thread = threading.Thread(target=worker, args=[queue_list])
-                thread_list.append(thread)
-            for thread in thread_list:
-                thread.start()
-            for thread in thread_list:
-                thread.join()
-            thread_list.clear()
-        except KeyboardInterrupt:
-            thread_list.clear()
-            thread.join()
+#Function To Scan Single Port
+def scan_port(ip, port):
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            s.connect_ex(ip, port)
+            return f"Port {port} on {ip} is open"
+    except:
+        return f"Port {port} on {ip} is closed"
+
+#Function To Scan Multiple Ports on A Single IP Address
+def scan_ip(ip, ports):
+    results = []
+    with ThreadPoolExecutor(max_workers=100) as executor:
+        futures = [executor.submit(scan_port, ip, port) for port in ports]
+        for future in futures:
+            results.append(future.result())
+        return results
+
+#Function To Scan Multiple IP Addresses
+def scan_network(ip_addresses, ports):
+    all_results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(scan_ip, ip, ports): ip for ip in ip_addresses}
+        for future in futures:
+            ip = futures[future]
+            all_results[ip] = future.result()
+    return all_results
+        
 
 def print_header():
     # Get Ip Address Range From User
@@ -63,37 +52,43 @@ def print_options():
           3. To Scan Common Ports
           ''')
 
-def print_scan_results():
-    print(open_ports)
-    print(unreachable_ip)
+def print_scan_results(results):
+    for ip, result in results.items():
+        print(f"Results for {ip}:")
+        for res in result:
+            print(res)
 
 #Main Function
 if __name__ == "__main__":
-    queue_ports = []
-
     #Function To Fill The Queue with Ports for efficient Threading
     def fill_queue(port_list):
         for port in port_list:
-            queue_ports.append(port)
+            ports.append(port)
 
     print_header()
     ip_address = input('Enter IP Address / Addresses - ')
     if ip_address == '':
         print("[-] Enter An IP Address")
         exit()
+    else:
+        for ip in ipaddress.IPv4Network(ip_address, strict=False):
+            ip_addresses.append(str(ip))
     print_options()
     option = input('Enter Option - ')
 
     if option == '1':
         fill_queue(range(1, 65536))
+        print(ports)
     elif option == '2':
-        ports = input('Enter Port Numbers (seperated by comma) - ')
-        fill_queue(ports.split(','))
+        input_ports = input('Enter Port Numbers (seperated by comma) - ')
+        fill_queue(input_ports.split(','))
+        print(ports)
     elif option == '3':
         fill_queue([20, 21, 22, 23, 25, 53, 67, 68, 80, 110, 119, 123, 143, 161, 194, 443, 546, 547])
+        print(ports)
     else:
         print("[-] Enter Correct Options")
         exit()
     
-    scan_network(ip_address, queue_ports)
-    print_scan_results()
+    results = scan_network(ip_addresses, ports)
+    print_scan_results(results)
