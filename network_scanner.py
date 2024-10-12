@@ -11,9 +11,10 @@ def scan_port(ip, port):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
-            s.connect_ex(ip, port)
+            s.connect((ip, port))
             return f"Port {port} on {ip} is open"
     except:
+        s.close()
         return f"Port {port} on {ip} is closed"
 
 #Function To Scan Multiple Ports on A Single IP Address
@@ -78,14 +79,11 @@ if __name__ == "__main__":
 
     if option == '1':
         fill_queue(range(1, 65536))
-        print(ports)
     elif option == '2':
         input_ports = input('Enter Port Numbers (seperated by comma) - ')
         fill_queue(input_ports.split(','))
-        print(ports)
     elif option == '3':
         fill_queue([20, 21, 22, 23, 25, 53, 67, 68, 80, 110, 119, 123, 143, 161, 194, 443, 546, 547])
-        print(ports)
     else:
         print("[-] Enter Correct Options")
         exit()
